@@ -241,8 +241,24 @@
             
             <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-slate-200 dark:border-gray-700 overflow-hidden">
                 <div class="p-4 border-b border-slate-100 dark:border-gray-700">
-                    <h4 class="font-bold text-sm text-slate-700 dark:text-gray-200">数据管理</h4>
+                    <h4 class="font-bold text-sm text-slate-700 dark:text-gray-200">数据管理 (备份与迁移)</h4>
                 </div>
+                
+                <button onclick="exportData()" class="w-full text-left p-4 hover:bg-slate-50 dark:hover:bg-gray-700 transition-colors text-primary font-bold text-sm border-b border-slate-100 dark:border-gray-700">
+                    <i class="fas fa-file-export mr-2"></i> 导出数据 (生成备份代码)
+                </button>
+                
+                <div class="p-4 border-b border-slate-100 dark:border-gray-700">
+                    <button onclick="document.getElementById('import-area').classList.toggle('hidden');" class="w-full text-left text-primary font-bold text-sm flex justify-between items-center">
+                        <span><i class="fas fa-file-import mr-2"></i> 导入数据 (粘贴备份代码)</span>
+                        <i class="fas fa-chevron-down text-xs"></i>
+                    </button>
+                    <div id="import-area" class="hidden mt-3">
+                        <textarea id="import-data-text" rows="5" placeholder="请在此处粘贴导出的备份代码..." class="w-full bg-slate-50 dark:bg-gray-700 dark:text-gray-200 rounded-lg p-2 text-xs border border-slate-200 dark:border-gray-600 outline-none"></textarea>
+                        <button onclick="importData()" class="w-full bg-success text-white font-bold py-2 rounded-lg mt-2 text-sm active:scale-[0.99] transition-transform">确认导入并覆盖</button>
+                    </div>
+                </div>
+                
                 <button onclick="generateDemoData()" class="w-full text-left p-4 hover:bg-slate-50 dark:hover:bg-gray-700 transition-colors text-primary font-bold text-sm border-b border-slate-100 dark:border-gray-700">
                     <i class="fas fa-magic mr-2"></i> 生成演示数据 (体验完整功能)
                 </button>
@@ -510,6 +526,68 @@
             }
             saveData();
             location.reload();
+        }
+
+        // === 数据备份与迁移 (新增功能) ===
+        
+        function exportData() {
+            try {
+                const dataString = JSON.stringify(data);
+                
+                // 尝试使用 Clipboard API 复制
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(dataString).then(() => {
+                        showToast('✅ 数据已复制到剪贴板！');
+                        alert('数据已成功导出并复制到剪贴板。请将这段代码粘贴到安全的地方，并在新手机上导入。');
+                    }).catch(err => {
+                        console.error('无法使用剪贴板API:', err);
+                        // 降级：显示在弹窗中让用户手动复制
+                        prompt('数据导出成功，请手动复制以下代码：', dataString);
+                    });
+                } else {
+                    // 降级：显示在弹窗中让用户手动复制
+                    prompt('数据导出成功，请手动复制以下代码：', dataString);
+                }
+            } catch (e) {
+                showToast('❌ 导出失败');
+                console.error('Export error:', e);
+            }
+        }
+        
+        function importData() {
+            const dataString = document.getElementById('import-data-text').value;
+            if (!dataString) {
+                return showToast('❌ 请粘贴数据代码');
+            }
+            
+            if (!confirm('🚨 警告：导入数据将覆盖您现有所有记录，确定继续吗？')) {
+                return;
+            }
+
+            try {
+                const importedData = JSON.parse(dataString);
+                
+                // 简单校验数据结构，确保至少有 transactions 数组
+                if (importedData && Array.isArray(importedData.transactions)) {
+                    // 使用新数据结构覆盖旧数据
+                    data = {...data, ...importedData}; 
+                    // 确保设置也被正确合并，防止新设置丢失
+                    data.settings = {...data.settings, ...importedData.settings};
+                    
+                    saveData();
+                    updateUI();
+                    loadSettings(); // 重新加载设置以应用字体/暗色模式
+                    document.getElementById('import-data-text').value = '';
+                    document.getElementById('import-area').classList.add('hidden');
+                    showToast('🎉 数据导入成功！');
+                    alert('数据已成功导入并恢复。');
+                } else {
+                    showToast('❌ 数据格式错误');
+                }
+            } catch (e) {
+                showToast('❌ 导入失败，不是有效的 JSON 格式');
+                console.error('Import error:', e);
+            }
         }
 
         // === 核心逻辑 (UI 更新) ===
