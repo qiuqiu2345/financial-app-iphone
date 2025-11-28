@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0f172a">
+    <title>PFAS 个人金融分析系统</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            // 启用基于 class 的暗色模式
+            darkMode: 'class', 
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6', // 蓝色主调
+                        secondary: '#64748b',
+                        danger: '#ef4444',
+                        success: '#10b981',
+                        dark: '#0f172a',
+                        card: '#1e293b'
+                    },
+                    fontFamily: {
+                        sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* iOS 沉浸式优化 */
+        body {
+            /* 浅色模式背景 */
+            background-color: #f1f5f9; 
+            padding-bottom: env(safe-area-inset-bottom);
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            transition: font-size 0.2s, background-color 0.3s; 
+        }
+        
+        /* 暗色模式全局样式 */
+        body.dark {
+            background-color: #111827; /* 深色背景 */
+            color: #e5e7eb;
+        }
+
+        /* 字体大小调整类 - 确保即使在 dark mode 也生效 */
+        .text-sm { font-size: 0.875rem; }
+        .text-base { font-size: 1rem; }
+        .text-lg { font-size: 1.125rem; }
+        
+        /* 隐藏滚动条 */
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* 底部导航激活态 */
+        .nav-item.active {
+            color: #3b82f6;
+            font-weight: 600;
+        }
+        .nav-item.active i {
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden text-base text-slate-800 dark:text-gray-100">
+
+    <div id="toast" class="fixed top-4 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-full shadow-xl z-[9999] text-sm font-medium opacity-0 transition-opacity duration-300">
+        操作成功
+    </div>
+    
+    <header class="bg-slate-900 dark:bg-black text-white pt-[max(env(safe-area-inset-top),20px)] pb-4 px-5 shadow-lg z-30 sticky top-0">
+        <div class="flex justify-between items-center">
+            <h1 class="text-lg font-bold tracking-wide flex items-center gap-2">
+                <i class="fas fa-chart-pie text-primary"></i> PFAS
+            </h1>
+            <button onclick="switchTab('settings')" class="text-slate-300 hover:text-white transition active:scale-95"><i class="fas fa-cog text-xl"></i></button>
+        </div>
+    </header>
+
+    <main class="flex-1 overflow-y-auto hide-scrollbar bg-slate-100 dark:bg-gray-900 pb-24 relative" id="main-container">
+        
+        <div id="view-dashboard" class="view-section px-4 py-5 space-y-5">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-slate-200 dark:border-gray-700">
+                <div class="flex justify-between items-end mb-2">
+                    <div>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase">本月剩余预算</p>
+                        <h2 class="text-3xl font-extrabold text-slate-800 dark:text-white mt-1" id="dash-budget-remain">¥ 0.00</h2>
+                    </div>
+                    <button onclick="openBudgetModal()" class="text-primary text-xs font-bold border border-primary/20 px-2 py-1 rounded hover:bg-primary/5 dark:hover:bg-primary/20">设置预算</button>
+                </div>
+                <div class="w-full bg-slate-100 dark:bg-gray-700 rounded-full h-2.5 mb-2 overflow-hidden">
+                    <div id="budget-progress" class="bg-primary h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+                <div class="flex justify-between text-xs text-slate-400 font-mono">
+                    <span>支出: <span id="dash-month-expense" class="text-danger">¥0</span></span>
+                    <span>预算: <span id="dash-month-target">¥0</span></span>
+                </div>
+            </div>
+
+            <div>
+                <h3 class="text-sm font-bold text-slate-700 dark:text-gray-200 mb-3 px-1 border-l-4 border-primary pl-2">账户资金 (流动)</h3>
+                <div class="grid grid-cols-2 gap-3" id="account-grid">
+                    </div>
+            </div>
+        </div>
+
+        <div id="view-ledger" class="view-section hidden px-4 py-5 space-y-4">
+            <div class="bg-white dark:bg-gray-800 p-3 rounded-xl shadow-sm border border-slate-200 dark:border-gray-700 sticky top-0 z-10">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="font-bold text-slate-700 dark:text-gray-200">🔍 交易筛选</h3>
+                    <div class="space-x-2">
+                        <button onclick="resetFilter()" class="text-xs text-slate-400 hover:text-primary">重置</button>
+                        <button onclick="applyFilter()" class="bg-primary text-white text-xs px-3 py-1.5 rounded-lg shadow-sm">应用筛选</button>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-3 gap-2 text-xs">
+                    <select id="filter-type" class="bg-slate-50 dark:bg-gray-700 dark:text-gray-200 border border-slate-200 dark:border-gray-600 rounded p-1.5">
+                        <option value="all">所有类型</option>
+                        <option value="expense">支出</option>
+                        <option value="income">收入</option>
+                    </select>
+                    <select id="filter-account" class="bg-slate-50 dark:bg-gray-700 dark:text-gray-200 border border-slate-200 dark:border-gray-600 rounded p-1.5 col-span-2">
+                        <option value="all">所有账户来源</option>
+                        <option value="微信支付">微信支付</option>
+                        <option value="支付宝">支付宝</option>
+                        <option value="银行卡">银行卡</option>
+                        <option value="现金">现金</option>
+                        <option value="信用卡">信用卡 (记账)</option>
+                    </select>
+                    <input type="text" id="filter-keyword" placeholder="关键词/标签..." class="col-span-3 bg-slate-50 dark:bg-gray-700 dark:text-gray-200 border border-slate-200 dark:border-gray-600 rounded p-1.5">
+                    
+                    <div class="col-span-3 flex items-center space-x-2 bg-slate-50 dark:bg-gray-700 dark:text-gray-200 p-1 rounded border border-slate-200 dark:border-gray-600">
+                         <span class="text-slate-400 dark:text-gray-500 scale-75">📅</span>
+                         <input type="date" id="filter-start" class="bg-transparent w-full">
+                         <span class="text-slate-300 dark:text-gray-600">-</span>
+                         <input type="date" id="filter-end" class="bg-transparent w-full">
+                    </div>
+                </div>
+            </div>
+
+            <div id="transaction-list" class="space-y-3 pb-10">
+                </div>
+        </div>
+
+        <div id="view-assets" class="view-section hidden px-4 py-5 space-y-5">
+            
+            <div class="bg-gradient-to-br from-slate-800 to-slate-900 dark:from-black dark:to-gray-900 rounded-2xl p-6 text-white shadow-xl">
+                <p class="text-xs text-slate-400 uppercase tracking-widest font-bold">FINANCIAL NET WORTH</p>
+                <h2 class="text-3xl font-bold mt-1 mb-4" id="asset-net-worth">¥ 0.00</h2>
+                <div class="flex justify-between border-t border-slate-700 dark:border-gray-700 pt-3">
+                    <div>
+                        <p class="text-[10px] text-slate-400">总资产</p>
+                        <p class="text-sm font-bold text-success" id="asset-total-val">¥ 0.00</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-[10px] text-slate-400">总负债</p>
+                        <p class="text-sm font-bold text-danger" id="asset-total-debt">¥ 0.00</p>
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="openAssetModal()" class="w-full py-3 bg-white dark:bg-gray-800 dark:text-primary border border-dashed border-slate-300 dark:border-gray-700 text-primary font-bold rounded-xl active:bg-slate-50 dark:active:bg-gray-700">
+                + 记录新资产/负债
+            </button>
+
+            <div class="space-y-4">
+                <div>
+                    <h3 class="text-xs font-bold text-slate-500 dark:text-gray-400 uppercase mb-2 pl-1">资产项目 (Assets)</h3>
+                    <div id="list-assets" class="space-y-2"></div>
+                </div>
+                <div>
+                    <h3 class="text-xs font-bold text-slate-500 dark:text-gray-400 uppercase mb-2 pl-1">负债项目 (Liabilities)</h3>
+                    <div id="list-liabilities" class="space-y-2"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="view-analysis" class="view-section hidden px-4 py-5 space-y-5">
+            <h3 class="text-xl font-extrabold text-slate-800 dark:text-white border-l-4 border-primary pl-2">📈 财务洞察</h3>
+            
+            <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-slate-200 dark:border-gray-700">
+                <h4 class="font-bold text-slate-700 dark:text-gray-200 mb-4">月度收支趋势</h4>
+                <div class="h-64 relative">
+                    <canvas id="trendChart"></canvas>
+                    <p id="trend-no-data" class="hidden text-center text-slate-400 text-sm absolute inset-0 flex items-center justify-center">暂无足够数据，请多记几笔账哦。</p>
+                </div>
+            </div>
+
+            <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-slate-200 dark:border-gray-700">
+                <h4 class="font-bold text-slate-700 dark:text-gray-200 mb-4">本月支出分类占比</h4>
+                <div class="h-64 relative flex justify-center">
+                    <canvas id="categoryChart"></canvas>
+                    <p id="category-no-data" class="hidden text-center text-slate-400 text-sm absolute inset-0 flex items-center justify-center">本月无支出记录。</p>
+                </div>
+            </div>
+        </div>
+        
+        <div id="view-settings" class="view-section hidden px-4 py-5 space-y-5">
+            <h3 class="text-xl font-extrabold text-slate-800 dark:text-white border-l-4 border-primary pl-2">⚙️ 应用设置</h3>
+
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-slate-200 dark:border-gray-700 overflow-hidden">
+                <div class="p-4 border-b border-slate-100 dark:border-gray-700">
+                    <h4 class="font-bold text-sm text-slate-700 dark:text-gray-200">界面与显示</h4>
+                </div>
+                
+                <div class="flex justify-between items-center p-4 border-b border-slate-100 dark:border-gray-700">
+                    <span class="text-sm">交易列表默认显示</span>
+                    <select id="setting-default-list" class="bg-slate-50 dark:bg-gray-700 dark:text-gray-200 rounded-lg p-1.5 text-sm" onchange="saveSetting('defaultList', this.value); renderLedger()">
+                        <option value="history">历史全部</option>
+                        <option value="month">本月账单</option>
+                        <option value="week">本周账单</option>
+                    </select>
+                </div>
+                
+                <div class="flex justify-between items-center p-4 border-b border-slate-100 dark:border-gray-700">
+                    <span class="text-sm">字体大小</span>
+                    <select id="setting-font-size" class="bg-slate-50 dark:bg-gray-700 dark:text-gray-200 rounded-lg p-1.5 text-sm" onchange="applyFontSize(this.value)">
+                        <option value="sm">小 (sm)</option>
+                        <option value="base">中 (base)</option>
+                        <option value="lg">大 (lg)</option>
+                    </select>
+                </div>
+                
+                <div class="flex justify-between items-center p-4">
+                    <span class="text-sm">启用暗色模式</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="setting-dark-mode" class="sr-only peer" onchange="toggleDarkMode(this.checked)">
+                        <div class="w-11 h-6 bg-slate-200 dark:bg-gray-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                    </label>
+                </div>
+            </div>
+            
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-slate-200 dark:border-gray-700 overflow-hidden">
+                <div class="p-4 border-b border-slate-100 dark:border-gray-700">
+                    <h4 class="font-bold text-sm text-slate-700 dark:text-gray-200">数据管理</h4>
+                </div>
+                <button onclick="generateDemoData()" class="w-full text-left p-4 hover:bg-slate-50 dark:hover:bg-gray-700 transition-colors text-primary font-bold text-sm border-b border-slate-100 dark:border-gray-700">
+                    <i class="fas fa-magic mr-2"></i> 生成演示数据 (体验完整功能)
+                </button>
+                <button onclick="clearAllDataConfirm()" class="w-full text-left p-4 hover:bg-red-50 dark:hover:bg-red-900/50 transition-colors text-danger font-bold text-sm">
+                    <i class="fas fa-trash-alt mr-2"></i> 清空所有数据 (需双重确认)
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <nav class="fixed bottom-0 w-full bg-white dark:bg-gray-800 border-t border-slate-200 dark:border-gray-700 pb-[env(safe-area-inset-bottom)] z-40">
+        <div class="flex justify-around items-center h-16">
+            <button class="nav-item active flex flex-col items-center flex-1" onclick="switchTab('dashboard')">
+                <i class="fas fa-home text-lg mb-0.5"></i>
+                <span class="text-[10px]">概览</span>
+            </button>
+            <button class="nav-item flex flex-col items-center flex-1 text-slate-400" onclick="switchTab('ledger')">
+                <i class="fas fa-list text-lg mb-0.5"></i>
+                <span class="text-[10px]">明细</span>
+            </button>
+            
+            <div class="relative -top-6">
+                <button onclick="openTransModal()" class="w-14 h-14 bg-primary rounded-full text-white shadow-lg shadow-blue-500/40 flex items-center justify-center text-2xl active:scale-95 transition-transform">
+                    <i class="fas fa-plus"></i>
+                </button>
+            </div>
+
+            <button class="nav-item flex flex-col items-center flex-1 text-slate-400" onclick="switchTab('assets')">
+                <i class="fas fa-university text-lg mb-0.5"></i>
+                <span class="text-[10px]">资产</span>
+            </button>
+            <button class="nav-item flex flex-col items-center flex-1 text-slate-400" onclick="switchTab('analysis')">
+                <i class="fas fa-chart-line text-lg mb-0.5"></i>
+                <span class="text-[10px]">分析</span>
+            </button>
+        </div>
+    </nav>
+
+    <div id="modal-trans" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeTransModal()"></div>
+        <div class="absolute bottom-0 w-full bg-white dark:bg-gray-800 rounded-t-3xl p-5 pb-[calc(20px+env(safe-area-inset-bottom))] modal-enter-active transition-transform">
+            <h3 class="text-lg font-bold text-center mb-4 text-slate-800 dark:text-white">记录新交易</h3>
+            
+            <div class="flex bg-slate-100 dark:bg-gray-700 p-1 rounded-lg mb-4">
+                <button id="btn-type-expense" onclick="setTransType('expense')" class="flex-1 py-2 rounded-md text-sm font-bold bg-white dark:bg-gray-900 shadow text-slate-800 dark:text-white transition-all">支出</button>
+                <button id="btn-type-income" onclick="setTransType('income')" class="flex-1 py-2 rounded-md text-sm font-bold text-slate-500 transition-all">收入</button>
+            </div>
+
+            <div class="space-y-3">
+                <div class="relative">
+                    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-lg font-bold">¥</span>
+                    <input type="number" id="t-amount" class="w-full bg-slate-50 dark:bg-gray-700 dark:text-white rounded-xl py-3 pl-8 pr-4 text-2xl font-bold border border-slate-200 dark:border-gray-600 focus:border-primary outline-none" placeholder="0.00">
+                </div>
+                
+                <div class="grid grid-cols-2 gap-3">
+                    <select id="t-category" class="bg-slate-50 dark:bg-gray-700 dark:text-gray-200 rounded-xl p-3 text-sm border border-slate-200 dark:border-gray-600 outline-none">
+                        </select>
+                    <select id="t-account" class="bg-slate-50 dark:bg-gray-700 dark:text-gray-200 rounded-xl p-3 text-sm border border-slate-200 dark:border-gray-600 outline-none">
+                        <option value="微信支付">微信支付</option>
+                        <option value="支付宝">支付宝</option>
+                        <option value="银行卡">银行卡</option>
+                        <option value="现金">现金</option>
+                        <option value="信用卡">信用卡 (记账)</option>
+                    </select>
+                </div>
+
+                <div class="flex space-x-2">
+                    <input type="date" id="t-date" class="w-1/3 bg-slate-50 dark:bg-gray-700 dark:text-gray-200 rounded-xl p-3 text-sm border border-slate-200 dark:border-gray-600 outline-none">
+                    <input type="text" id="t-desc" placeholder="描述 (如: 早餐)" class="flex-1 bg-slate-50 dark:bg-gray-700 dark:text-gray-200 rounded-xl p-3 text-sm border border-slate-200 dark:border-gray-600 outline-none">
+                </div>
+                
+                <input type="text" id="t-tags" placeholder="标签 (逗号分隔, 选填)" class="w-full bg-slate-50 dark:bg-gray-700 dark:text-gray-200 rounded-xl p-3 text-sm border border-slate-200 dark:border-gray-600 outline-none">
+
+                <button onclick="submitTransaction()" class="w-full bg-primary text-white font-bold py-3.5 rounded-xl shadow-lg active:scale-[0.98]">确认记录</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-asset" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeAssetModal()"></div>
+        <div class="absolute bottom-0 w-full bg-white dark:bg-gray-800 rounded-t-3xl p-5 pb-[calc(20px+env(safe-area-inset-bottom))] modal-enter-active">
+            <h3 class="text-lg font-bold text-center mb-4 text-slate-800 dark:text-white">资产/负债录入</h3>
+            
+            <div class="space-y-3">
+                <div>
+                    <label class="text-xs font-bold text-slate-500 dark:text-gray-400 ml-1">项目名称</label>
+                    <input type="text" id="a-name" class="w-full bg-slate-50 dark:bg-gray-700 dark:text-gray-200 rounded-xl p-3 text-sm border border-slate-200 dark:border-gray-600 outline-none" placeholder="例如: 招行储蓄卡">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs font-bold text-slate-500 dark:text-gray-400 ml-1">类型</label>
+                        <select id="a-type" class="w-full bg-slate-50 dark:bg-gray-700 dark:text-gray-200 rounded-xl p-3 text-sm border border-slate-200 dark:border-gray-600 outline-none">
+                            <option value="Investment">投资 (资产)</option>
+                            <option value="Property">房产/车辆 (资产)</option>
+                            <option value="OtherAsset">其他资产</option>
+                            <option value="Loan">贷款/信用卡债 (负债)</option>
+                            <option value="OtherLiability">其他负债</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-slate-500 dark:text-gray-400 ml-1">估值/金额 (¥)</label>
+                        <input type="number" id="a-value" class="w-full bg-slate-50 dark:bg-gray-700 dark:text-gray-200 rounded-xl p-3 text-sm border border-slate-200 dark:border-gray-600 outline-none" placeholder="0.00">
+                    </div>
+                </div>
+
+                <button onclick="submitAsset()" class="w-full bg-slate-800 dark:bg-primary dark:text-white text-white font-bold py-3.5 rounded-xl shadow-lg mt-2 active:scale-[0.98]">保存项目</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-budget" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="document.getElementById('modal-budget').classList.add('hidden')"></div>
+        <div class="bg-white dark:bg-gray-800 w-full max-w-sm rounded-2xl p-6 relative z-10 shadow-2xl">
+            <h3 class="text-lg font-bold mb-4 text-slate-800 dark:text-white">设置本月预算</h3>
+            <input type="number" id="b-amount" class="w-full bg-slate-50 dark:bg-gray-700 dark:text-white rounded-xl p-3 text-2xl font-bold border border-slate-200 dark:border-gray-600 outline-none mb-4 text-center" placeholder="0.00">
+            <button onclick="saveBudget()" class="w-full bg-primary text-white font-bold py-3 rounded-xl">确认修改</button>
+        </div>
+    </div>
+
+    <script>
+        // === 数据结构与初始化 ===
+        const APP_ID = 'pfas_v4_ultimate';
+        let data = {
+            transactions: [],
+            assets: [],
+            budget: 5000,
+            accounts: {
+                '微信支付': 0,
+                '支付宝': 0,
+                '银行卡': 0,
+                '现金': 0,
+                '信用卡': 0
+            },
+            settings: {
+                defaultList: 'month', 
+                fontSize: 'base',
+                darkMode: false
+            }
+        };
+
+        const CATEGORIES = {
+            expense: ['餐饮', '交通', '住房/水电', '生活杂费', '娱乐/购物', '医疗', '教育', '其他支出'],
+            income: ['工资/奖金', '投资收益', '其他收入']
+        };
+        let charts = {}; // 用于存储 Chart.js 实例
+        let currentTransType = 'expense';
+        let currentTab = 'dashboard'; // 跟踪当前显示的Tab
+
+        window.onload = () => {
+            loadData();
+            document.getElementById('t-date').valueAsDate = new Date();
+            loadSettings(); // 确保加载设置
+            updateUI();
+            switchTab('dashboard'); // 默认显示仪表盘
+        };
+        
+        // === 数据存取与设置 ===
+        function saveData() { localStorage.setItem(APP_ID, JSON.stringify(data)); }
+        function loadData() {
+            const str = localStorage.getItem(APP_ID);
+            if(str) {
+                 const loadedData = JSON.parse(str);
+                 // 确保旧数据结构升级（例如，旧数据中没有settings）
+                 data = {...data, ...loadedData};
+                 data.settings = {...data.settings, ...loadedData.settings};
+            }
+        }
+        
+        function loadSettings() {
+            // 1. 应用暗色模式
+            document.getElementById('setting-dark-mode').checked = data.settings.darkMode;
+            if (data.settings.darkMode) {
+                document.body.classList.add('dark');
+            } else {
+                document.body.classList.remove('dark');
+            }
+            
+            // 2. 应用字体设置
+            applyFontSize(data.settings.fontSize, false); // 不重复保存
+            
+            // 3. 填充下拉框值
+            document.getElementById('setting-default-list').value = data.settings.defaultList;
+            document.getElementById('setting-font-size').value = data.settings.fontSize;
+        }
+
+        function saveSetting(key, value) {
+            data.settings[key] = value;
+            saveData();
+            showToast('设置已保存');
+        }
+
+        function applyFontSize(size, shouldSave = true) {
+            const root = document.body;
+            // 确保移除所有字体大小类，然后添加新的
+            root.classList.remove('text-sm', 'text-base', 'text-lg');
+            root.classList.add(`text-${size}`);
+            
+            if (shouldSave) {
+                saveSetting('fontSize', size);
+            }
+            // 确保下拉框的值与实际应用的一致
+            document.getElementById('setting-font-size').value = size;
+            showToast(`字体已设置为: ${size}`);
+        }
+        
+        function toggleDarkMode(isDark) {
+            if (isDark) {
+                document.body.classList.add('dark');
+                showToast('已切换至暗色模式');
+            } else {
+                document.body.classList.remove('dark');
+                showToast('已切换至浅色模式');
+            }
+            // 保存设置
+            saveSetting('darkMode', isDark);
+            
+            // 强制重新渲染图表以适应新主题
+            if (currentTab === 'analysis' && data.transactions.length > 0) {
+                 renderAnalysis(); 
+            }
+        }
+        
+        function clearAllDataConfirm() {
+            if (confirm("🚨 警告：确定清空所有数据吗？此操作不可逆！")) {
+                 if (confirm("⚠️ 最后确认：您将永久丢失所有交易、资产和预算数据，是否继续？")) {
+                    localStorage.removeItem(APP_ID);
+                    location.reload();
+                 }
+            } else {
+                showToast('已取消清空操作');
+            }
+        }
+
+        function generateDemoData() {
+            if(!confirm("这将清空现有数据并生成演示数据，确定吗？")) return;
+            data.transactions = [];
+            data.accounts = { '微信支付': 2540.50, '支付宝': 1200.00, '银行卡': 50000.00, '现金': 200.00, '信用卡': -3200.00 };
+            data.assets = [
+                {name: '特斯拉股票', value: 35000, type: 'Investment'},
+                {name: '住房公积金', value: 89000, type: 'OtherAsset'},
+                {name: '房贷剩余', value: 850000, type: 'Loan'}
+            ];
+            
+            // 生成随机交易
+            const startDay = new Date();
+            startDay.setDate(startDay.getDate() - 60); // 从两个月前开始
+            const accounts = ['微信支付', '银行卡', '支付宝'];
+
+            for(let i=0; i<50; i++) {
+                const isExp = Math.random() > 0.4;
+                const date = new Date(startDay.getTime() + Math.random() * (Date.now() - startDay.getTime())); // 随机日期
+                
+                data.transactions.push({
+                    id: Date.now() + i,
+                    date: date.toISOString().split('T')[0],
+                    type: isExp ? 'expense' : 'income',
+                    amount: isExp ? -(Math.random()*500 + 20) : (Math.random()*5000 + 2000),
+                    category: isExp ? ['餐饮','交通','住房/水电','娱乐/购物'][Math.floor(Math.random()*4)] : '工资/奖金',
+                    account: accounts[Math.floor(Math.random()*accounts.length)],
+                    desc: isExp ? ['午餐','打车','房租','购物'][Math.floor(Math.random()*4)] : '月薪',
+                    tags: isExp ? ['#日常']: ['']
+                });
+            }
+            saveData();
+            location.reload();
+        }
+
+        // === 核心逻辑 (UI 更新) ===
+
+        function updateUI() {
+            calculateDashboard();
+            renderAssets();
+            renderLedger(); 
+            // 切换到分析 Tab 时再渲染图表
+        }
+
+        function calculateDashboard() {
+            const now = new Date();
+            const currentMonth = now.getMonth();
+            const currentYear = now.getFullYear();
+
+            let monthIncome = 0;
+            let monthExpense = 0;
+            
+            let tempAccounts = { '微信支付': 0, '支付宝': 0, '银行卡': 0, '现金': 0, '信用卡': 0 };
+
+            data.transactions.forEach(t => {
+                const tDate = new Date(t.date);
+                
+                // 累计账户余额
+                if (tempAccounts.hasOwnProperty(t.account)) {
+                    tempAccounts[t.account] += t.amount;
+                }
+
+                // 统计本月收支
+                if (tDate.getMonth() === currentMonth && tDate.getFullYear() === currentYear) {
+                    if (t.type === 'income') monthIncome += t.amount;
+                    else monthExpense += Math.abs(t.amount);
+                }
+            });
+            
+            data.accounts = tempAccounts;
+
+            // 2. 更新仪表盘 DOM
+            document.getElementById('dash-month-target').innerText = `¥${data.budget.toFixed(2)}`;
+            document.getElementById('dash-month-expense').innerText = `¥${monthExpense.toFixed(2)}`;
+            
+            const remaining = data.budget - monthExpense;
+            const remainEl = document.getElementById('dash-budget-remain');
+            remainEl.innerText = `¥ ${remaining.toFixed(2)}`;
+            remainEl.className = remaining < 0 ? "text-3xl font-extrabold text-danger mt-1" : "text-3xl font-extrabold text-slate-800 dark:text-white mt-1";
+
+            const progress = data.budget > 0 ? (monthExpense / data.budget) * 100 : 0;
+            const bar = document.getElementById('budget-progress');
+            bar.style.width = `${Math.min(progress, 100)}%`;
+            bar.className = progress > 100 ? "bg-danger h-2.5 rounded-full" : "bg-primary h-2.5 rounded-full";
+
+            // 3. 渲染账户卡片
+            const accGrid = document.getElementById('account-grid');
+            accGrid.innerHTML = '';
+            const accountIcons = {'微信支付':'fab fa-weixin', '支付宝':'fas fa-wallet', '银行卡':'fas fa-credit-card', '现金':'fas fa-coins', '信用卡':'fas fa-file-invoice-dollar'};
+            
+            Object.entries(data.accounts).forEach(([acc, val]) => {
+                const colorClass = val >= 0 ? 'text-slate-800 dark:text-white' : 'text-danger';
+                accGrid.innerHTML += `
+                    <div class="bg-white dark:bg-gray-800 p-3 rounded-xl shadow-sm border border-slate-200 dark:border-gray-700">
+                        <div class="flex items-center space-x-2 mb-1">
+                            <i class="${accountIcons[acc]||'fas fa-wallet'} text-slate-400 dark:text-gray-500 text-xs"></i>
+                            <span class="text-xs text-slate-500 dark:text-gray-400">${acc}</span>
+                        </div>
+                        <p class="font-bold ${colorClass}">¥ ${val.toFixed(2)}</p>
+                    </div>
+                `;
+            });
+        }
+        
+        // === 资产管理逻辑 ===
+        function renderAssets() {
+            const listAssets = document.getElementById('list-assets');
+            const listLiabilities = document.getElementById('list-liabilities');
+            listAssets.innerHTML = '';
+            listLiabilities.innerHTML = '';
+
+            let totalAsset = 0;
+            let totalDebt = 0;
+            
+            // 资产总额 = 投资/房产/其他资产 + (所有账户中正余额的总和)
+            // 负债总额 = 贷款/信用卡债/其他负债 + (所有账户中负余额的总和)
+            
+            const liquidAsset = Object.entries(data.accounts).reduce((sum, [name, val]) => {
+                if (val > 0) sum += val;
+                return sum;
+            }, 0);
+            const liquidDebt = Object.entries(data.accounts).reduce((sum, [name, val]) => {
+                if (val < 0) sum += Math.abs(val);
+                return sum;
+            }, 0);
+            
+            totalAsset += liquidAsset;
+            totalDebt += liquidDebt;
+
+            const liquidAssetItem = (name, val) => `
+                <div class="bg-blue-50/50 dark:bg-blue-900/30 p-3 rounded-xl border border-blue-200 dark:border-blue-800 flex justify-between items-center">
+                    <div>
+                        <p class="font-bold text-sm text-slate-700 dark:text-gray-200">${name} (余额)</p>
+                        <span class="text-[10px] bg-blue-100 dark:bg-blue-600 text-blue-600 dark:text-white px-1.5 py-0.5 rounded font-bold">流动资金</span>
+                    </div>
+                    <p class="font-bold text-slate-800 dark:text-white">¥ ${val.toFixed(2)}</p>
+                </div>`;
+            
+            const liquidDebtItem = (name, val) => `
+                <div class="bg-red-50/50 dark:bg-red-900/30 p-3 rounded-xl border border-red-200 dark:border-red-800 flex justify-between items-center">
+                    <div>
+                        <p class="font-bold text-sm text-slate-700 dark:text-gray-200">${name} (透支)</p>
+                        <span class="text-[10px] bg-red-100 dark:bg-red-600 text-red-600 dark:text-white px-1.5 py-0.5 rounded font-bold">流动负债</span>
+                    </div>
+                    <p class="font-bold text-danger">¥ ${val.toFixed(2)}</p>
+                </div>`;
+            
+            // 渲染流动资金
+            Object.entries(data.accounts).forEach(([name, val]) => {
+                if (val > 0) listAssets.innerHTML += liquidAssetItem(name, val);
+                else if (val < 0) listLiabilities.innerHTML += liquidDebtItem(name, Math.abs(val));
+            });
+
+            // 渲染固定/投资/负债项目
+            data.assets.forEach((item, index) => {
+                const isDebt = item.type === 'Loan' || item.type === 'OtherLiability';
+                const container = isDebt ? listLiabilities : listAssets;
+                const val = parseFloat(item.value);
+
+                if (isDebt) totalDebt += val;
+                else totalAsset += val;
+
+                const tagColor = isDebt ? 'bg-red-100 dark:bg-red-600 dark:text-white text-red-600' : 'bg-blue-100 dark:bg-blue-600 dark:text-white text-blue-600';
+                const typeLabel = getTypeLabel(item.type);
+                const assetColor = isDebt ? 'text-danger' : 'text-slate-800 dark:text-white';
+
+                container.innerHTML += `
+                    <div class="bg-white dark:bg-gray-800 p-3 rounded-xl border border-slate-200 dark:border-gray-700 flex justify-between items-center">
+                        <div>
+                            <p class="font-bold text-sm text-slate-700 dark:text-gray-200">${item.name}</p>
+                            <span class="text-[10px] ${tagColor} px-1.5 py-0.5 rounded font-bold">${typeLabel}</span>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-bold ${assetColor}">¥ ${val.toFixed(2)}</p>
+                            <button onclick="deleteAsset(${index})" class="text-[10px] text-slate-300 dark:text-gray-500 hover:text-danger">删除</button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            if(listAssets.innerHTML === '') listAssets.innerHTML = '<p class="text-center text-slate-400 dark:text-gray-600 text-xs py-4 border-2 border-dashed border-slate-200 dark:border-gray-700 rounded-xl">暂无资产记录</p>';
+            if(listLiabilities.innerHTML === '') listLiabilities.innerHTML = '<p class="text-center text-slate-400 dark:text-gray-600 text-xs py-4 border-2 border-dashed border-slate-200 dark:border-gray-700 rounded-xl">暂无负债记录</p>';
+
+            document.getElementById('asset-total-val').innerText = `¥ ${totalAsset.toFixed(2)}`;
+            document.getElementById('asset-total-debt').innerText = `¥ ${totalDebt.toFixed(2)}`;
+            document.getElementById('asset-net-worth').innerText = `¥ ${(totalAsset - totalDebt).toFixed(2)}`;
+        }
+
+        // === 交易明细逻辑 ===
+        function renderLedger(filteredData = null) {
+            const list = document.getElementById('transaction-list');
+            list.innerHTML = '';
+            
+            // 默认加载逻辑 (根据设置来决定加载历史、本月还是本周)
+            let source = filteredData;
+            if (!filteredData) {
+                const setting = data.settings.defaultList;
+                const now = new Date();
+                
+                source = data.transactions.filter(t => {
+                    const tDate = new Date(t.date);
+                    if (setting === 'history') return true;
+                    if (setting === 'month') return tDate.getMonth() === now.getMonth() && tDate.getFullYear() === now.getFullYear();
+                    if (setting === 'week') {
+                        const startOfWeek = new Date(now);
+                        startOfWeek.setHours(0,0,0,0);
+                        // 调整为周一为一周开始（西方是周日，国内习惯周一）
+                        const day = startOfWeek.getDay(); // 0 (Sun) to 6 (Sat)
+                        const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); // 如果是周日 (0)，回退 6 天到上周一
+                        startOfWeek.setDate(diff); 
+                        
+                        return tDate >= startOfWeek;
+                    }
+                    return true;
+                });
+            }
+
+            if (source.length === 0) {
+                list.innerHTML = `<p class="text-center text-slate-400 dark:text-gray-600 text-sm py-4">暂无符合条件的记录 (${data.settings.defaultList === 'history' ? '全部历史' : data.settings.defaultList === 'month' ? '本月' : '本周'})</p>`;
+                return;
+            }
+
+            // 按时间排序
+            const sorted = [...source].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            sorted.forEach(t => {
+                const isExp = t.type === 'expense';
+                const amountColor = isExp ? 'text-danger' : 'text-success';
+                const sign = isExp ? '' : '+';
+                
+                list.innerHTML += `
+                    <div class="bg-white dark:bg-gray-800 p-3 rounded-xl border border-slate-200 dark:border-gray-700 flex justify-between items-center shadow-sm transition-colors">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-full ${isExp ? 'bg-red-100 dark:bg-red-700/50 text-red-500 dark:text-red-300' : 'bg-green-100 dark:bg-green-700/50 text-green-500 dark:text-green-300'} flex items-center justify-center">
+                                <i class="fas ${getIcon(t.category)}"></i>
+                            </div>
+                            <div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="font-bold text-sm text-slate-700 dark:text-gray-200">${t.category}</span>
+                                    <span class="text-[10px] text-slate-400 dark:text-gray-500 border border-slate-100 dark:border-gray-700 px-1 rounded">${t.account}</span>
+                                </div>
+                                <div class="text-xs text-slate-400 dark:text-gray-500">
+                                    ${new Date(t.date).toLocaleDateString()} · ${t.desc || '无描述'}
+                                    ${t.tags ? `<span class="text-primary ml-1">#${t.tags}</span>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        <span class="font-bold ${amountColor}">${sign}¥ ${Math.abs(t.amount).toFixed(2)}</span>
+                    </div>
+                `;
+            });
+        }
+        
+        // === 图表分析逻辑 (核心新增) ===
+        function renderAnalysis() {
+            // 销毁旧图表
+            if (charts.trend) charts.trend.destroy();
+            if (charts.category) charts.category.destroy();
+            
+            // 图表配置 - 依赖当前主题
+            const isDark = document.body.classList.contains('dark');
+            const textColor = isDark ? '#e5e7eb' : '#334155';
+            const gridColor = isDark ? 'rgba(75, 85, 99, 0.5)' : 'rgba(203, 213, 225, 0.5)';
+
+            // 1. 月度趋势数据计算
+            const monthlyData = {};
+            const sortedTx = [...data.transactions].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            sortedTx.forEach(t => {
+                const date = new Date(t.date);
+                const yearMonth = `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+                
+                if (!monthlyData[yearMonth]) {
+                    monthlyData[yearMonth] = { income: 0, expense: 0 };
+                }
+
+                if (t.type === 'income') {
+                    monthlyData[yearMonth].income += t.amount;
+                } else {
+                    monthlyData[yearMonth].expense += Math.abs(t.amount);
+                }
+            });
+
+            const trendLabels = Object.keys(monthlyData);
+            const trendIncome = trendLabels.map(key => monthlyData[key].income.toFixed(2));
+            const trendExpense = trendLabels.map(key => monthlyData[key].expense.toFixed(2));
+
+            // 2. 本月支出分类数据计算
+            const now = new Date();
+            const currentMonthExpense = {};
+            
+            data.transactions.filter(t => 
+                t.type === 'expense' && 
+                new Date(t.date).getMonth() === now.getMonth() && 
+                new Date(t.date).getFullYear() === now.getFullYear()
+            ).forEach(t => {
+                currentMonthExpense[t.category] = (currentMonthExpense[t.category] || 0) + Math.abs(t.amount);
+            });
+            
+            const categoryLabels = Object.keys(currentMonthExpense);
+            const categoryValues = Object.values(currentMonthExpense);
+
+            // 3. 渲染趋势图
+            const ctxTrend = document.getElementById('trendChart');
+            const trendNoData = document.getElementById('trend-no-data');
+            if(trendLabels.length > 0) {
+                ctxTrend.style.display = 'block';
+                trendNoData.style.display = 'none';
+                charts.trend = new Chart(ctxTrend, {
+                    type: 'line',
+                    data: {
+                        labels: trendLabels,
+                        datasets: [
+                            {
+                                label: '支出 (¥)',
+                                data: trendExpense,
+                                borderColor: '#ef4444',
+                                backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 68, 68, 0.1)',
+                                fill: true, tension: 0.3, pointRadius: 3
+                            },
+                            {
+                                label: '收入 (¥)',
+                                data: trendIncome,
+                                borderColor: '#10b981',
+                                backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : 'rgba(16, 185, 129, 0.1)',
+                                fill: true, tension: 0.3, pointRadius: 3
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { position: 'top', labels: { color: textColor } } },
+                        scales: { 
+                            x: { grid: { display: false }, ticks: { color: textColor } }, 
+                            y: { beginAtZero: true, grid: { color: gridColor }, ticks: { color: textColor } } 
+                        }
+                    }
+                });
+            } else {
+                ctxTrend.style.display = 'none';
+                trendNoData.style.display = 'flex';
+            }
+
+
+            // 4. 渲染分类图
+            const ctxCategory = document.getElementById('categoryChart');
+            const categoryNoData = document.getElementById('category-no-data');
+            if(categoryValues.length > 0) {
+                 ctxCategory.style.display = 'block';
+                 categoryNoData.style.display = 'none';
+                charts.category = new Chart(ctxCategory, {
+                    type: 'doughnut',
+                    data: {
+                        labels: categoryLabels,
+                        datasets: [{
+                            data: categoryValues,
+                            backgroundColor: ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#cbd5e1', '#0ea5e9', '#ec4899'],
+                            hoverOffset: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false, cutout: '60%',
+                        plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 12 }, color: textColor } } }
+                    }
+                });
+            } else {
+                ctxCategory.style.display = 'none';
+                categoryNoData.style.display = 'flex';
+            }
+        }
+        
+        // === 路由与工具函数 ===
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+            document.getElementById('view-' + tabId).classList.remove('hidden');
+            
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active', 'text-primary'));
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.add('text-slate-400'));
+            
+            const navs = document.querySelectorAll('.nav-item');
+            // 这里的索引对应底部导航栏的顺序: 概览(0), 明细(1), 资产(2), 分析(3)
+            const map = {'dashboard':0, 'ledger':1, 'assets':2, 'analysis':3};
+            
+            if(map[tabId] !== undefined) {
+                // 激活底部Tab
+                navs[map[tabId]].classList.add('active', 'text-primary');
+                navs[map[tabId]].classList.remove('text-slate-400');
+            }
+            
+            currentTab = tabId; // 更新当前 Tab 状态
+            
+            // 页面特定刷新
+            if(tabId === 'assets') renderAssets(); 
+            if(tabId === 'analysis') renderAnalysis();
+            if(tabId === 'settings') loadSettings(); 
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg;
+            toast.classList.remove('opacity-0');
+            
+            // 强制重新流式布局，确保动画重启
+            void toast.offsetWidth; 
+            
+            setTimeout(() => toast.classList.add('opacity-0'), 2000);
+        }
+        
+        // 模态框控制函数
+        const openTransModal = () => { 
+            setTransType('expense'); 
+            document.getElementById('modal-trans').classList.remove('hidden'); 
+            // 增加反馈，确保用户知道点击有效
+            showToast('打开记账面板');
+        };
+        const closeTransModal = () => document.getElementById('modal-trans').classList.add('hidden');
+        
+        const openAssetModal = () => document.getElementById('modal-asset').classList.remove('hidden');
+        const closeAssetModal = () => document.getElementById('modal-asset').classList.add('hidden');
+        
+        const openBudgetModal = () => {
+            document.getElementById('b-amount').value = data.budget;
+            document.getElementById('modal-budget').classList.remove('hidden');
+        };
+        
+        const saveBudget = () => {
+            const val = parseFloat(document.getElementById('b-amount').value);
+            if (!isNaN(val)) {
+                data.budget = val;
+                saveData();
+                updateUI();
+                document.getElementById('modal-budget').classList.add('hidden');
+                showToast('预算已更新');
+            }
+        };
+
+        // 交易、资产提交和辅助函数... (保持与之前版本一致的逻辑)
+        function setTransType(type) {
+            currentTransType = type;
+            const btnExp = document.getElementById('btn-type-expense');
+            const btnInc = document.getElementById('btn-type-income');
+            const catSelect = document.getElementById('t-category');
+            const isDark = document.body.classList.contains('dark');
+
+            if(type === 'expense') {
+                btnExp.className = `flex-1 py-2 rounded-md text-sm font-bold bg-white ${isDark ? 'dark:bg-gray-900' : ''} shadow text-slate-800 dark:text-white transition-all`;
+                btnInc.className = "flex-1 py-2 rounded-md text-sm font-bold text-slate-500 transition-all";
+            } else {
+                btnExp.className = "flex-1 py-2 rounded-md text-sm font-bold text-slate-500 transition-all";
+                btnInc.className = `flex-1 py-2 rounded-md text-sm font-bold bg-white ${isDark ? 'dark:bg-gray-900' : ''} shadow text-slate-800 dark:text-white transition-all`;
+            }
+
+            // 更新分类选项
+            catSelect.innerHTML = '';
+            CATEGORIES[type].forEach(c => {
+                catSelect.innerHTML += `<option value="${c}">${c}</option>`;
+            });
+        }
+        
+        function submitTransaction() {
+            const amount = parseFloat(document.getElementById('t-amount').value);
+            if (!amount || amount <= 0) return alert('请输入有效金额');
+
+            const newTx = {
+                id: Date.now(),
+                type: currentTransType,
+                amount: currentTransType === 'expense' ? -amount : amount,
+                category: document.getElementById('t-category').value,
+                account: document.getElementById('t-account').value,
+                date: document.getElementById('t-date').value,
+                desc: document.getElementById('t-desc').value,
+                tags: document.getElementById('t-tags').value
+            };
+
+            data.transactions.unshift(newTx);
+            saveData();
+            updateUI();
+            closeTransModal();
+            
+            document.getElementById('t-amount').value = '';
+            document.getElementById('t-desc').value = '';
+            document.getElementById('t-tags').value = '';
+            showToast('✔️ 记账成功');
+        }
+
+        function submitAsset() {
+            const name = document.getElementById('a-name').value;
+            const val = parseFloat(document.getElementById('a-value').value);
+            const type = document.getElementById('a-type').value;
+
+            if (!name || isNaN(val)) return alert('请填写完整');
+
+            data.assets.push({ name, value: val, type });
+            saveData();
+            updateUI();
+            closeAssetModal();
+            document.getElementById('a-name').value = '';
+            document.getElementById('a-value').value = '';
+            showToast('✔️ 资产项目已保存');
+        }
+        
+        function deleteAsset(index) {
+            if(confirm('确定删除此项目？')) {
+                data.assets.splice(index, 1);
+                saveData();
+                renderAssets();
+                updateUI();
+                showToast('项目已删除');
+            }
+        }
+        
+        function getTypeLabel(type) {
+            const map = {
+                'Investment': '投资', 'Property': '房产/车辆', 'Loan': '负债/贷款',
+                'OtherAsset': '其他资产', 'OtherLiability': '其他负债'
+            };
+            return map[type] || type;
+        }
+
+        function getIcon(cat) {
+            const map = {
+                '餐饮': 'fa-utensils', '交通': 'fa-car', '住房/水电': 'fa-home',
+                '生活杂费': 'fa-shopping-basket', '娱乐/购物': 'fa-bag-shopping', '医疗': 'fa-first-aid',
+                '教育': 'fa-graduation-cap', '其他支出': 'fa-tag', 
+                '工资/奖金': 'fa-money-bill', '投资收益': 'fa-chart-line', '其他收入': 'fa-piggy-bank'
+            };
+            return map[cat] || 'fa-tag';
+        }
+
+        // 筛选逻辑 (保持不变)
+        function applyFilter() {
+            const type = document.getElementById('filter-type').value;
+            const account = document.getElementById('filter-account').value;
+            const keyword = document.getElementById('filter-keyword').value.toLowerCase();
+            const start = document.getElementById('filter-start').value;
+            const end = document.getElementById('filter-end').value;
+
+            const filtered = data.transactions.filter(t => {
+                if (type !== 'all' && t.type !== type) return false;
+                if (account !== 'all' && t.account !== account) return false;
+                if (keyword && !((t.desc && t.desc.toLowerCase().includes(keyword)) || (t.tags && t.tags.toLowerCase().includes(keyword)))) return false;
+                const tDate = new Date(t.date).getTime();
+                if (start && tDate < new Date(start).getTime()) return false;
+                // 结束日期检查要包含当天
+                if (end && tDate > new Date(end).getTime() + 86400000 - 1) return false; 
+
+                return true;
+            });
+
+            renderLedger(filtered);
+            showToast(`筛选出 ${filtered.length} 条记录`);
+        }
+        function resetFilter() {
+            document.getElementById('filter-type').value = 'all';
+            document.getElementById('filter-account').value = 'all';
+            document.getElementById('filter-keyword').value = '';
+            document.getElementById('filter-start').value = '';
+            document.getElementById('filter-end').value = '';
+            renderLedger();
+            showToast('筛选已重置');
+        }
+        
+    </script>
+</body>
+</html>
